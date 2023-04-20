@@ -1,4 +1,4 @@
-package com.example.springboot;
+package com.harness;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
