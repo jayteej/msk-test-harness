@@ -3,12 +3,14 @@ Setup
 1. Create an MSK cluster with the steps here
 https://docs.aws.amazon.com/msk/latest/developerguide/create-cluster.html
 
-2. Keep the test host you created, add IAMFull policy permissions to the ec2 role for it.
+2. Keep the test host you created, add IAMFullAccess policy permissions to the ec2 role for it.
 3. You will need to populate test.role.policy.arn and cluster.arn with the arn of the MSK cluster you created and the policy you created in application.properties.
 4. You should be able to test and run locally on the ec2 host before moving to ecs deployment. (Run Application.main or use maven as below)
 5. To run in your own ecs cluster you will need to create an ECR repository.
 6. Once you have done this you can create and upload your docker image as per below. The tag names can be whatever you like.
 7. Follow this guide for creating the ECS/ECR components. You can ignore the application creation part as you will deploy this application. https://mydeveloperplanet.com/2021/09/07/how-to-deploy-a-spring-boot-app-on-aws-ecs-cluster/
+8. The ECS task role and instance role will need creating (uou can use the same one for both). You should attach the policy that works for your ec2 instance above. Also you will need to attach IAMFullAccess, CloudWatchLogsFullAccess, 
+and EC2InstanceProfileForImageBuilderECRContainerBuilds policies.
 
 Cleanup after OutOfMemory Or Other Unexpected Failure
 =========================
