@@ -72,11 +72,13 @@ public class IAMHelpers {
         logger.info("Cleanup old roles...");
         var res = iamClient.listRoles(new ListRolesRequest().withMaxItems(1000));
         res.getRoles().stream().filter(r -> r.getRoleName().startsWith(prefix))
-                .forEach(r -> IAMHelpers.deleteTempIamRole(iamClient, r.getRoleName(), policyToRemove));
+                .forEach(r -> {
+                    Utils.sleepQuietly(1000);
+                    IAMHelpers.deleteTempIamRole(iamClient, r.getRoleName(), policyToRemove);
+                });
     }
 
     public static void deleteTempIamRole(AmazonIdentityManagement iamClient, String roleName, String policyToRemove) {
-        sleepQuietly(1000);
         Optional.ofNullable(iamClient).ifPresent(ic -> {
             try {
                 logger.info("Remove role {} and policy {}", roleName, policyToRemove);
@@ -99,17 +101,10 @@ public class IAMHelpers {
         }
     }
 
-    public static void sleepQuietly(long timeInMs) {
-        try {
-            Thread.sleep(timeInMs);
-        } catch (InterruptedException e) {
-        }
-    }
-
     public static AWSStaticCredentialsProvider tryAssumeRole(AWSSecurityTokenService stsClient, Role tempIamRole) {
         DefaultAWSCredentialsProviderChain.getInstance().refresh();
-        logger.info("Waiting 30 seconds to make sure IAM policies have caught up.");
-        sleepQuietly(30000);
+        logger.info("Waiting 10 seconds to make sure IAM policies have caught up.");
+        Utils.sleepQuietly(10000);
 
         logger.info("Assume role for {}", tempIamRole.getArn());
         var assumeRequest = new AssumeRoleRequest()
