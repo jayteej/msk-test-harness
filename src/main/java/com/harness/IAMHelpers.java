@@ -69,17 +69,18 @@ public class IAMHelpers {
     }
 
     public static void cleanupIamRoles(AmazonIdentityManagement iamClient, String prefix, String policyToRemove) {
+        logger.info("Cleanup old roles...");
         var res = iamClient.listRoles(new ListRolesRequest().withMaxItems(1000));
         res.getRoles().stream().filter(r -> r.getRoleName().startsWith(prefix))
                 .forEach(r -> IAMHelpers.deleteTempIamRole(iamClient, r.getRoleName(), policyToRemove));
     }
 
     public static void deleteTempIamRole(AmazonIdentityManagement iamClient, String roleName, String policyToRemove) {
+        sleepQuietly(1000);
         Optional.ofNullable(iamClient).ifPresent(ic -> {
             try {
-                ic.detachRolePolicy(
-                        new DetachRolePolicyRequest().withRoleName(roleName)
-                                .withPolicyArn(policyToRemove));
+                logger.info("Remove role {} and policy {}", roleName, policyToRemove);
+                detachPolicy(iamClient, roleName, policyToRemove);
                 logger.info("deleting role={}", roleName);
                 ic.deleteRole(new DeleteRoleRequest().withRoleName(roleName));
             } catch (Exception ex) {
@@ -88,8 +89,17 @@ public class IAMHelpers {
         });
     }
 
+    private static void detachPolicy(AmazonIdentityManagement iamClient, String roleName, String policyToRemove) {
+        try {
+            iamClient.detachRolePolicy(
+                    new DetachRolePolicyRequest().withRoleName(roleName)
+                            .withPolicyArn(policyToRemove));
+        } catch (Exception ex) {
+            logger.error("Unable to detach policy on".concat(roleName), ex);
+        }
+    }
 
-    private static void sleepQuietly(long timeInMs) {
+    public static void sleepQuietly(long timeInMs) {
         try {
             Thread.sleep(timeInMs);
         } catch (InterruptedException e) {

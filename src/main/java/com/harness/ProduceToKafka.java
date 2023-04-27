@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -69,8 +70,14 @@ public class ProduceToKafka {
     @Value("${cleanup.old.roles}")
     private boolean cleanupOldRoles;
 
+    @Value("${cleanup.old.topics}")
+    private boolean cleanupOldTopics;
+
     @Value("${start.producer}")
     private boolean startProducer;
+
+    @Value("${start.jitter.seconds}")
+    private int randomStartJitterSeconds;
 
     private Role tempIamRole;
     private volatile long lastSeenMessagesSent = 0L;
@@ -79,13 +86,7 @@ public class ProduceToKafka {
 
     @PostConstruct
     void initAndStart() {
-        logger.info("Using DefaultAWSCredentialsProviderChain");
-        this.ses = Executors.newScheduledThreadPool(1);
-        this.kafkaClient = AWSKafkaClientBuilder.standard()
-                .withRegion(Regions.US_EAST_1)
-                .withCredentials(DefaultAWSCredentialsProviderChain.getInstance())
-                .build();
-
+        logger.info("Using DefaultAWSCredentialsProviderChain v1");
         // This is for simulation of multiple iam users where each running produce will
         // have its own iam.
         this.iamClient = AmazonIdentityManagementClientBuilder.defaultClient();
@@ -96,26 +97,60 @@ public class ProduceToKafka {
         // ONLY ENABLE FROM SINGLE PROCESS IN EC2.
         if (cleanupOldRoles) {
             IAMHelpers.cleanupIamRoles(iamClient, testRolePrefix, testRolePolicyArn);
+            System.exit(1);
         }
+
+        int waitTimeInSeconds = new Random().nextInt(randomStartJitterSeconds) + 1;
+        logger.info("Waiting {} seconds to start", waitTimeInSeconds);
+        IAMHelpers.sleepQuietly(waitTimeInSeconds * 1000);
 
         this.tempIamRole = IAMHelpers.createIamRole(iamClient, stsClient, testRolePolicyArn, testRolePrefix);
 
         IAMHelpers.tryAssumeRole(stsClient, tempIamRole);
 
+        this.kafkaClient = AWSKafkaClientBuilder.standard()
+                .withRegion(Regions.US_EAST_1)
+                .withCredentials(DefaultAWSCredentialsProviderChain.getInstance())
+                .build();
+
         var props = iamProps();
-        this.kafkaProducer = new KafkaProducer<>(props);
         this.adminClient = AdminClient.create(props);
-        this.testTopics = createTopics();
+
+        if (cleanupOldTopics) {
+            cleanupOldTopics();
+        } else {
+            this.testTopics = createTopics();
+        }
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> stopProducer()));
         Runtime.getRuntime().addShutdownHook(new Thread(() -> cleanIam()));
         Runtime.getRuntime().addShutdownHook(new Thread(() -> stopStats()));
 
+        this.ses = Executors.newScheduledThreadPool(1);
         ses.scheduleAtFixedRate(this::stats, 0, STATS_RATE_SECONDS, TimeUnit.SECONDS);
 
         if (startProducer) {
+            this.kafkaProducer = new KafkaProducer<>(props);
             startProducing();
         }
+    }
+
+    private void cleanupOldTopics() {
+        logger.info("Cleaning up old topics...");
+        var response = adminClient.listTopics();
+        try {
+            var allTopics = response.listings().get();
+            logger.info("Found {} topics", allTopics.size());
+            this.testTopics = allTopics.stream().map(tl -> tl.name())
+                    .filter(topic -> topic.startsWith(testTopicPrefix))
+                    .collect(Collectors.toList());
+            logger.info("test topics to delete {} {}", testTopics.size(), testTopics.toString());
+            deleteTestTopics();
+        } catch (InterruptedException | ExecutionException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+
     }
 
     private List<String> createTopics() {
@@ -148,6 +183,7 @@ public class ProduceToKafka {
         running = true;
         while (running) {
             testTopics.forEach(this::produce);
+            IAMHelpers.sleepQuietly(250);
         }
     }
 
@@ -160,6 +196,10 @@ public class ProduceToKafka {
     }
 
     public void cleanIam() {
+        // Sigterm has 30 seconds grace, then sigkill.
+        int randomSeconds = new Random().nextInt(25) + 1;
+        logger.info("Waiting {} seconds jitter before cleaning IAM.", randomSeconds);
+        IAMHelpers.sleepQuietly(randomSeconds * 1000);
         logger.info("Clean IAM...");
         IAMHelpers.deleteTempIamRole(iamClient, tempIamRole.getRoleName(), testRolePolicyArn);
         logger.info("Clean IAM - completed.");
@@ -219,8 +259,8 @@ public class ProduceToKafka {
         props.put("security.protocol", "SASL_SSL");
         props.put("sasl.mechanism", "AWS_MSK_IAM");
         props.put("sasl.jaas.config", String.format(
-                "software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn=\"%s\" awsRoleSessionName=\"producer\";",
-                tempIamRole.getArn()));
+                "software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn=\"%s\" awsRoleSessionName=\"%s\";",
+                tempIamRole.getArn(), tempIamRole.getRoleName()));
         props.put("sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
         return props;
     }
@@ -246,8 +286,10 @@ public class ProduceToKafka {
 
     void deleteTestTopics() {
         Optional.ofNullable(testTopics).filter(tt -> tt.size() > 0).ifPresent(tt -> {
+            logger.info("deleting {} topics", tt.size());
             try {
                 adminClient.deleteTopics(tt).all().get();
+                testTopics.clear();
             } catch (Exception ex) {
                 logger.warn("Failed to delete topic ".concat(tt.toString()), ex);
             }
