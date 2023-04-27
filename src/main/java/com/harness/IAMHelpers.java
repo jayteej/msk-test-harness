@@ -73,7 +73,7 @@ public class IAMHelpers {
         var res = iamClient.listRoles(new ListRolesRequest().withMaxItems(1000));
         res.getRoles().stream().filter(r -> r.getRoleName().startsWith(prefix))
                 .forEach(r -> {
-                    Utils.sleepQuietly(1000);
+                    Utils.sleepQuietly(500);
                     IAMHelpers.deleteTempIamRole(iamClient, r.getRoleName(), policyToRemove);
                 });
     }

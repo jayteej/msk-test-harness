@@ -12,6 +12,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 
 import com.amazonaws.services.identitymanagement.model.Role;
@@ -29,6 +30,9 @@ public class ConsumeFromKafka {
     @Autowired
     private IAMManager iamManager;
 
+    @Value("${start.consumer}")
+    private boolean startConsumer;
+
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private Role tempIamRole;
     private KafkaConsumer<String, String> kafkaConsumer;
@@ -39,14 +43,19 @@ public class ConsumeFromKafka {
 
     @PostConstruct
     public void init() {
-        this.tempIamRole = iamManager.getTempIamRole();
-        iamManager.tryAssumeRole();
-        kafkaConsumer = new KafkaConsumer<>(iamProps());
-        CompletableFuture.runAsync(() -> startConsumer());
-        startStats();
+        if (startConsumer) {
+            this.tempIamRole = iamManager.getTempIamRole();
+            iamManager.tryAssumeRole();
+            kafkaConsumer = new KafkaConsumer<>(iamProps());
+            CompletableFuture.runAsync(() -> startConsumer());
+            startStats();
 
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> stopConsumer()));
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> stopStats()));
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> stopConsumer()));
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> stopStats()));
+        } else {
+            logger.info("Consumption is disabled.");
+        }
+
     }
 
     private void stopStats() {
