@@ -77,7 +77,6 @@ public class ConsumeFromKafka {
     private void stopConsumer() {
         logger.info("Stopping consumer...");
         running = false;
-        kafkaConsumer.close(Duration.ofSeconds(5));
     }
 
     private void startConsumer() {
@@ -93,6 +92,7 @@ public class ConsumeFromKafka {
                 logger.error("Error during consume.", ex);
             }
         }
+        kafkaConsumer.close(Duration.ofSeconds(5));
     }
 
     Properties iamProps() {
@@ -105,6 +105,7 @@ public class ConsumeFromKafka {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put("enable.auto.commit", "true");
         props.put("sasl.mechanism", "AWS_MSK_IAM");
+        props.put("metadata.fetch.timeout.ms", "30");
         props.put("sasl.jaas.config", String.format(
                 "software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn=\"%s\" awsRoleSessionName=\"%s\";",
                 tempIamRole.getArn(), tempIamRole.getRoleName()));
