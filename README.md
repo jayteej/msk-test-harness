@@ -12,6 +12,15 @@ https://docs.aws.amazon.com/msk/latest/developerguide/create-cluster.html
 8. The ECS task role and instance role will need creating (uou can use the same one for both). You should attach the policy that works for your ec2 instance above. Also you will need to attach IAMFullAccess, CloudWatchLogsFullAccess, 
 and EC2InstanceProfileForImageBuilderECRContainerBuilds policies.
 
+- You can control the behaviour for the load test per process/container by editing `application.properties`.
+- You will need to add the cluster arn and the policy to `application.properties` as the process creates its own IAM role (for testing IAM scaling).
+- If you make a config change to `application.properties` you will need to republish the image right now.
+
+TODO Ideas
+====
+- Add support for environment variables to allow configuration from ECS console.
+- Wire up cloudwatch metrics for client side visibility during a load test.
+
 Cleanup after OutOfMemory Or Other Unexpected Failure
 =========================
 ```
@@ -25,11 +34,12 @@ done < /tmp/topics.txt
 
 Install Maven on Amazon Linux Machine
 ==================
-Assumes you do this in /home/ec2-user/
+Assumes you do this in /home/ec2-user/ and are using bash
 ```
 sudo wget https://dlcdn.apache.org/maven/maven-3/3.9.1/binaries/apache-maven-3.9.1-bin.tar.gz
 tar xzvf apache-maven-3.9.1-bin.tar.gz
 echo 'export PATH=$PATH:/home/ec2-user/apache-maven-3.9.1/bin' >> ~/.bash_profile
+source ~/.bash_profile
 ```
 
 Running From Maven
