@@ -25,10 +25,11 @@ done < /tmp/topics.txt
 
 Install Maven on Amazon Linux Machine
 ==================
+Assumes you do this in /home/ec2-user/
 ```
-sudo wget http://repos.fedorapeople.org/repos/dchen/apache-maven/epel-apache-maven.repo -O /etc/yum.repos.d/epel-apache-maven.repo
-sudo sed -i s/\$releasever/6/g /etc/yum.repos.d/epel-apache-maven.repo
-sudo yum install -y apache-maven
+sudo wget https://dlcdn.apache.org/maven/maven-3/3.9.1/binaries/apache-maven-3.9.1-bin.tar.gz
+tar xzvf apache-maven-3.9.1-bin.tar.gz
+echo 'export PATH=$PATH:/home/ec2-user/apache-maven-3.9.1/bin' >> ~/.bash_profile
 ```
 
 Running From Maven
@@ -39,9 +40,10 @@ mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Xms2G -Xmx2G"
 
 Docker Image Create and Upload
 ===================
+Assumes you have populated the env variable $AWS_ACCOUNT_ID
 ```
 mvn clean verify
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account>.dkr.ecr.us-east-1.amazonaws.com
-docker tag msk/harness:0.0.1-SNAPSHOT  <account>.dkr.ecr.us-east-1.amazonaws.com/msk/harness:latest
-docker push <account>.dkr.ecr.us-east-1.amazonaws.com/msk/harness:latest
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+docker tag msk/harness:0.0.1-SNAPSHOT  $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/msk/harness:latest
+docker push $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/msk/harness:latest
 ```
