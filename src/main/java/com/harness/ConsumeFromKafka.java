@@ -105,7 +105,6 @@ public class ConsumeFromKafka {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put("enable.auto.commit", "true");
         props.put("sasl.mechanism", "AWS_MSK_IAM");
-        props.put("metadata.fetch.timeout.ms", "30");
         props.put("sasl.jaas.config", String.format(
                 "software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn=\"%s\" awsRoleSessionName=\"%s\";",
                 tempIamRole.getArn(), tempIamRole.getRoleName()));
