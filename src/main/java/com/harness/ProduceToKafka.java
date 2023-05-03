@@ -4,6 +4,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -34,8 +36,9 @@ public class ProduceToKafka {
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
-    private KafkaProducer<String, String> kafkaProducer;
+    private volatile KafkaProducer<String, String> kafkaProducer;
     private ScheduledExecutorService ses;
+    private ScheduledExecutorService badClient;
     private List<String> testTopics;
 
     @Value("${cluster.arn}")
@@ -44,13 +47,20 @@ public class ProduceToKafka {
     @Value("${start.producer}")
     private boolean startProducer;
 
+    @Value("${producer.recreate.connection}")
+    private boolean recreateProducerConnection;
+
     @Value("${producer.messages.sleep.between}")
     private int sleepBetweenProduces;
+
+    @Value("${producer.recreate.connection.every.seconds}")
+    private int recreateConnectionSeconds;
 
     private Role tempIamRole;
     private volatile long lastSeenMessagesSent = 0L;
     private volatile long messagesSentAndAcked = 0L;
     private boolean running = false;
+    private Properties props;
 
     @PostConstruct
     void initAndStart() {
@@ -59,7 +69,7 @@ public class ProduceToKafka {
 
             this.tempIamRole = iamManager.getTempIamRole();
             iamManager.tryAssumeRole();
-            var props = iamProps();
+            this.props = iamProps();
 
             this.testTopics = kafkaManager.getTestTopics();
 
@@ -68,8 +78,19 @@ public class ProduceToKafka {
 
             this.ses = Executors.newScheduledThreadPool(1);
             ses.scheduleAtFixedRate(this::stats, 0, STATS_RATE_SECONDS, TimeUnit.SECONDS);
-            this.kafkaProducer = new KafkaProducer<>(props);
-            startProducing();
+            this.kafkaProducer = new KafkaProducer<>(this.props);
+            if (recreateProducerConnection) {
+                // This is for simulating a badly behaving client that creates a new client on
+                // each produce.
+                logger.warn("Badly behaving producer is enabled, new client created every {} seconds",
+                        recreateConnectionSeconds);
+                this.badClient = Executors.newScheduledThreadPool(1);
+                badClient.scheduleAtFixedRate(() -> {
+                    this.kafkaProducer = new KafkaProducer<>(this.props);
+                }, recreateConnectionSeconds, recreateConnectionSeconds,
+                        TimeUnit.SECONDS);
+            }
+            CompletableFuture.runAsync(() -> startProducing());
         } else {
             logger.info("Producing is disabled.");
         }
@@ -81,19 +102,20 @@ public class ProduceToKafka {
             testTopics.forEach(this::produce);
             Utils.sleepQuietly(sleepBetweenProduces);
         }
+        closeProducer();
     }
 
     public void stopProducer() {
         logger.info("Shutting down producer...");
         running = false;
-        closeProducer();
         logger.info("Shutting down producer - completed.");
     }
 
     public void stopStats() {
         if (ses != null) {
             logger.info("Shutting down stats...");
-            ses.shutdownNow();
+            Optional.ofNullable(ses).ifPresent(ExecutorService::shutdownNow);
+            Optional.ofNullable(badClient).ifPresent(ExecutorService::shutdownNow);
             logger.info("Shutting down stats - completed.");
         }
     }
@@ -101,7 +123,7 @@ public class ProduceToKafka {
     void stats() {
         var sentInWindow = messagesSentAndAcked - lastSeenMessagesSent;
         var sentPerSecond = sentInWindow > 0 ? sentInWindow / STATS_RATE_SECONDS : -1;
-        logger.info("STATS: sentInWindow={}, sentPerSecond={}", sentInWindow, sentPerSecond);
+        logger.warn("STATS: sentInWindow={}, sentPerSecond={}", sentInWindow, sentPerSecond);
         lastSeenMessagesSent = messagesSentAndAcked;
     }
 

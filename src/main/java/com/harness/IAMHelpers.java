@@ -103,8 +103,8 @@ public class IAMHelpers {
 
     public static AWSStaticCredentialsProvider tryAssumeRole(AWSSecurityTokenService stsClient, Role tempIamRole) {
         DefaultAWSCredentialsProviderChain.getInstance().refresh();
-        logger.info("Waiting 10 seconds to make sure IAM policies have caught up.");
-        Utils.sleepQuietly(10000);
+        logger.info("Waiting 15 seconds to make sure IAM policies have caught up.");
+        Utils.sleepQuietly(15000);
 
         logger.info("Assume role for {}", tempIamRole.getArn());
         var assumeRequest = new AssumeRoleRequest()

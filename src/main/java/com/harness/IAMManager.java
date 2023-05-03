@@ -71,7 +71,7 @@ public class IAMManager {
     }
 
     public void cleanIam() {
-        logger.info("Sigterm recieced: cleanIam()");
+        logger.info("Sigterm recieved: cleanIam()");
         if (tempIamRole != null) {
             // Sigterm in ECS has 30 seconds grace, then sigkill.
             int randomSeconds = new Random().nextInt(stopJitterSeconds) + 1;

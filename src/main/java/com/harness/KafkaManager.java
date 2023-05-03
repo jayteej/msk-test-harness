@@ -1,5 +1,6 @@
 package com.harness;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -36,6 +37,9 @@ public class KafkaManager {
     @Value("${test.topic.prefix}")
     private String testTopicPrefix;
 
+    @Value("${test.topic.fixed:#{null}}")
+    private String testTopicFixed;
+
     @Value("${cleanup.old.topics}")
     private boolean cleanupOldTopics;
 
@@ -68,9 +72,18 @@ public class KafkaManager {
     }
 
     private void createTestTopics() {
-        this.testTopics = IntStream.rangeClosed(1, testTopicCount)
-                .mapToObj(i -> createTopic())
-                .collect(Collectors.toList());
+
+        if (testTopicFixed != null && testTopicFixed.length() > 0) {
+            logger.info("Using fixed test topics {}", testTopicFixed);
+            this.testTopics = Arrays.stream(this.testTopicFixed.split(","))
+                    .map(providedName -> createTopic(false, providedName))
+                    .collect(Collectors.toList());
+        } else {
+            logger.info("Generating test topics with prefix {}", testTopicPrefix);
+            this.testTopics = IntStream.rangeClosed(1, testTopicCount)
+                    .mapToObj(i -> createTopic(true, null))
+                    .collect(Collectors.toList());
+        }
     }
 
     public List<String> getTestTopics() {
@@ -78,6 +91,10 @@ public class KafkaManager {
     }
 
     public void deleteTestTopics(List<String> topicsToDelete) {
+        if (testTopicFixed != null && testTopicFixed.length() > 0) {
+            logger.info("Test topics are fixed and therefore we will not tidy them up.");
+            return;
+        }
         Optional.ofNullable(topicsToDelete).filter(tt -> tt.size() > 0).ifPresent(tt -> {
             logger.info("deleting {} topics", tt.size());
             try {
@@ -88,9 +105,11 @@ public class KafkaManager {
         });
     }
 
-    private String createTopic() {
-        var topicName = testTopicPrefix.concat(String.format("%s-%s-%s", RandomStringUtils.randomAlphanumeric(5),
-                RandomStringUtils.randomAlphanumeric(5), RandomStringUtils.randomAlphanumeric(5)));
+    private String createTopic(boolean runtimeOnFailure, String overrideName) {
+        var topicName = overrideName == null
+                ? testTopicPrefix.concat(String.format("%s-%s-%s", RandomStringUtils.randomAlphanumeric(5),
+                        RandomStringUtils.randomAlphanumeric(5), RandomStringUtils.randomAlphanumeric(5)))
+                : overrideName;
         var request = new NewTopic(topicName, NUM_PARTITIONS, RF);
 
         try {
@@ -102,8 +121,13 @@ public class KafkaManager {
                 logger.info("Created topic {}", topicName);
             }
         } catch (ExecutionException | InterruptedException ex) {
-            logger.error("Error when creating topic.", ex);
-            throw new RuntimeException(ex);
+            if (runtimeOnFailure) {
+                logger.error("Error when creating topic.", ex);
+                throw new RuntimeException(ex);
+            } else {
+                logger.warn("Problem when creating topic. Expected if using fixed and already exists: {}", ex.getMessage());
+            }
+
         }
         return topicName;
     }

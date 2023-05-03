@@ -58,7 +58,7 @@ public class ConsumeFromKafka {
 
     }
 
-    private void stopStats() {
+    public void stopStats() {
         this.ses.shutdownNow();
     }
 
@@ -74,7 +74,7 @@ public class ConsumeFromKafka {
         lastMessagesConsumed = messagesConsumed;
     }
 
-    private void stopConsumer() {
+    public void stopConsumer() {
         logger.info("Stopping consumer...");
         running = false;
     }
