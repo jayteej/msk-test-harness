@@ -28,6 +28,7 @@ TODO Ideas
 ====
 - Add support for environment variables to allow configuration from ECS console.
 - Wire up cloudwatch metrics for client side visibility during a load test.
+- Add support for non IAM auth.
 
 Cleanup after OutOfMemory Or Other Unexpected Failure
 =========================
