@@ -128,7 +128,7 @@ public class ProduceToKafka {
     void stats() {
         var sentInWindow = messagesSentAndAcked - lastSeenMessagesSent;
         var sentPerSecond = sentInWindow > 0 ? sentInWindow / STATS_RATE_SECONDS : -1;
-        logger.info("STATS: sentInWindow={}, sentPerSecond={}", sentInWindow, sentPerSecond);
+        logger.info("STATS: sentInWindow={}, sentPerSecond={} topics={}", sentInWindow, sentPerSecond, testTopics);
         lastSeenMessagesSent = messagesSentAndAcked;
     }
 

@@ -89,7 +89,7 @@ public class KafkaManager {
     }
 
     public void deleteTestTopics(List<String> topicsToDelete) {
-        if (useFixedTestTopics) {
+        if (useFixedTestTopics && !cleanupOldTopics) {
             logger.info("Test topics are fixed and therefore we will not tidy them up.");
             logger.info("If you wish to clean them up, restart with cleanup.old.topics=true");
             return;
