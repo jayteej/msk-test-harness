@@ -24,6 +24,11 @@ public class IAMHelpers {
 
     private final static Logger logger = LoggerFactory.getLogger(IAMHelpers.class);
 
+    public static String getCurrentRoleUserId(AWSSecurityTokenService stsClient) {
+        return stsClient.getCallerIdentity(new GetCallerIdentityRequest()
+                .withRequestCredentialsProvider(DefaultAWSCredentialsProviderChain.getInstance())).getArn();
+    }
+
     public static Role createIamRole(AmazonIdentityManagement iamClient, AWSSecurityTokenService stsClient,
             String testRolePolicyArn, String testRolePrefix) {
         // Get the currently running assumed role.

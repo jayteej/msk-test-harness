@@ -50,6 +50,10 @@ public class IAMManager {
         }));
     }
 
+    public String getCurrentRole() {
+        return IAMHelpers.getCurrentRoleUserId(stsClient);
+    }
+
     @PostConstruct
     public void runCleanupIfEnabled() {
         // This is a flag that can be set in properties to intially remove all old test

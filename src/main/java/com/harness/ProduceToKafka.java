@@ -47,6 +47,9 @@ public class ProduceToKafka {
     @Value("${start.producer}")
     private boolean startProducer;
 
+    @Value("${use.dynamic.roles}")
+    private boolean useDynamicRoles;
+
     @Value("${producer.recreate.connection}")
     private boolean recreateProducerConnection;
 
@@ -67,10 +70,12 @@ public class ProduceToKafka {
         if (startProducer) {
             logger.info("Initialising and starting ProduceToKafka");
 
-            this.tempIamRole = iamManager.getTempIamRole();
-            iamManager.tryAssumeRole();
-            this.props = iamProps();
+            if (useDynamicRoles) {
+                this.tempIamRole = iamManager.getTempIamRole();
+                iamManager.tryAssumeRole();
+            }
 
+            this.props = iamProps();
             this.testTopics = kafkaManager.getTestTopics();
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> stopProducer()));
@@ -123,7 +128,7 @@ public class ProduceToKafka {
     void stats() {
         var sentInWindow = messagesSentAndAcked - lastSeenMessagesSent;
         var sentPerSecond = sentInWindow > 0 ? sentInWindow / STATS_RATE_SECONDS : -1;
-        logger.warn("STATS: sentInWindow={}, sentPerSecond={}", sentInWindow, sentPerSecond);
+        logger.info("STATS: sentInWindow={}, sentPerSecond={}", sentInWindow, sentPerSecond);
         lastSeenMessagesSent = messagesSentAndAcked;
     }
 
@@ -150,9 +155,16 @@ public class ProduceToKafka {
         props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
         props.put("security.protocol", "SASL_SSL");
         props.put("sasl.mechanism", "AWS_MSK_IAM");
-        props.put("sasl.jaas.config", String.format(
-                "software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn=\"%s\" awsRoleSessionName=\"%s\";",
-                tempIamRole.getArn(), tempIamRole.getRoleName()));
+        if (useDynamicRoles) {
+            // Use the dynamically created role.
+            props.put("sasl.jaas.config", String.format(
+                    "software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn=\"%s\" awsRoleSessionName=\"%s\";",
+                    tempIamRole.getArn(), tempIamRole.getRoleName()));
+        } else {
+            // Use the role of the current machine or ecs task.
+            props.put("sasl.jaas.config", "software.amazon.msk.auth.iam.IAMLoginModule required;");
+        }
+
         props.put("sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
         return props;
     }

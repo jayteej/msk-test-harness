@@ -7,6 +7,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.slf4j.Logger;
@@ -30,6 +31,9 @@ public class ConsumeFromKafka {
     @Autowired
     private IAMManager iamManager;
 
+    @Value("${use.dynamic.roles}")
+    private boolean useDynamicRoles;
+
     @Value("${start.consumer}")
     private boolean startConsumer;
 
@@ -44,8 +48,13 @@ public class ConsumeFromKafka {
     @PostConstruct
     public void init() {
         if (startConsumer) {
-            this.tempIamRole = iamManager.getTempIamRole();
-            iamManager.tryAssumeRole();
+            logger.info("Initialising and starting ConsumeFromKafka");
+
+            if (useDynamicRoles) {
+                this.tempIamRole = iamManager.getTempIamRole();
+                iamManager.tryAssumeRole();
+            }
+
             kafkaConsumer = new KafkaConsumer<>(iamProps());
             CompletableFuture.runAsync(() -> startConsumer());
             startStats();
@@ -97,17 +106,26 @@ public class ConsumeFromKafka {
 
     Properties iamProps() {
         Properties props = new Properties();
+        var currentRoleUserId = iamManager.getCurrentRole();
         props.put("bootstrap.servers", kafkaManager.getBrokers());
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("security.protocol", "SASL_SSL");
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, tempIamRole.getRoleName());
+        props.put(ConsumerConfig.GROUP_ID_CONFIG,
+                useDynamicRoles ? tempIamRole.getRoleName() : currentRoleUserId);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put("enable.auto.commit", "true");
         props.put("sasl.mechanism", "AWS_MSK_IAM");
-        props.put("sasl.jaas.config", String.format(
-                "software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn=\"%s\" awsRoleSessionName=\"%s\";",
-                tempIamRole.getArn(), tempIamRole.getRoleName()));
+        if (useDynamicRoles) {
+            // Use the dynamically created role.
+            props.put("sasl.jaas.config", String.format(
+                    "software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn=\"%s\" awsRoleSessionName=\"%s\";",
+                    tempIamRole.getArn(), tempIamRole.getRoleName()));
+        } else {
+            // Use the role of the current machine or ecs task.
+            logger.info("Not using dynamic roles for consumer, using {}", currentRoleUserId);
+            props.put("sasl.jaas.config", "software.amazon.msk.auth.iam.IAMLoginModule required;");
+        }
         props.put("sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
         return props;
     }
