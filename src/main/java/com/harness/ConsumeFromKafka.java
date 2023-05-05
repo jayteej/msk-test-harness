@@ -113,7 +113,8 @@ public class ConsumeFromKafka {
         props.put(ConsumerConfig.GROUP_ID_CONFIG,
                 useDynamicRoles ? tempIamRole.getRoleName() : currentRoleUserId);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        props.put("enable.auto.commit", "true");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
+        props.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "1000");
         props.put("sasl.mechanism", "AWS_MSK_IAM");
         if (useDynamicRoles) {
             // Use the dynamically created role.
