@@ -133,9 +133,11 @@ public class ProduceToKafka {
     }
 
     void produce(String topicName) {
+        // Setting a key to fix sticky partition bug in older versions of kafka.
+        var key = RandomStringUtils.randomAlphanumeric(8);
         var payload = RandomStringUtils.randomAlphanumeric(32);
         logger.debug("Try produce to topic {} with payload {}", topicName, payload);
-        var record = new ProducerRecord<String, String>(topicName, payload);
+        var record = new ProducerRecord<String, String>(topicName, key, payload);
         kafkaProducer.send(record, (metadata, ex) -> {
             if (ex != null) {
                 logger.error("Unable to produce to ".concat(topicName), ex);
