@@ -96,7 +96,6 @@ public class ConsumeFromKafka {
             try {
                 var records = kafkaConsumer.poll(Duration.ofMillis(100));
                 messagesConsumed += records.count();
-                kafkaConsumer.commitAsync();
             } catch (Exception ex) {
                 logger.error("Error during consume.", ex);
             }
