@@ -111,7 +111,7 @@ public class ConsumeFromKafka {
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("security.protocol", "SASL_SSL");
         props.put(ConsumerConfig.GROUP_ID_CONFIG,
-                useDynamicRoles ? tempIamRole.getRoleName() : currentRoleUserId);
+                useDynamicRoles ? tempIamRole.getRoleName() : "msk-test-harness");
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
         props.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "1000");
