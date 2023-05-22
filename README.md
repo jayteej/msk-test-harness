@@ -2,7 +2,7 @@ MSK Test Harness
 ====
 This is a test framework that is designed to run in a ECS/Fargate cluster to allow for large scale testing of an MSK cluster.
 
-It was originally built to load test IAM and therefore creates 1 IAM role per container/process that is created.
+It was originally built to load test IAM and therefore creates 1 IAM role per container/process that is created when IAM is enabled. SASL/SCRAM and no role creation is also supported. See application.properties.
 
 It can also be run locally on an EC2 instance.
 
@@ -26,9 +26,7 @@ and EC2InstanceProfileForImageBuilderECRContainerBuilds policies.
 
 TODO Ideas
 ====
-- Add support for environment variables to allow configuration from ECS console.
 - Wire up cloudwatch metrics for client side visibility during a load test.
-- Add support for non IAM auth.
 
 Cleanup after OutOfMemory Or Other Unexpected Failure
 =========================
