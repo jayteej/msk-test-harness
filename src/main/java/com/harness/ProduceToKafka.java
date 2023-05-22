@@ -26,6 +26,7 @@ import jakarta.annotation.PostConstruct;
 @Controller
 public class ProduceToKafka {
 
+    private static final String IAM = "iam";
     private static final int STATS_RATE_SECONDS = 10;
 
     @Autowired
@@ -59,6 +60,15 @@ public class ProduceToKafka {
     @Value("${producer.recreate.connection.every.seconds}")
     private int recreateConnectionSeconds;
 
+    @Value("${auth.method}")
+    private String authMethod;
+
+    @Value("${sasl.scram.username:foo}")
+    private String username;
+
+    @Value("${sasl.scram.password:bar}")
+    private String password;
+
     private Role tempIamRole;
     private volatile long lastSeenMessagesSent = 0L;
     private volatile long messagesSentAndAcked = 0L;
@@ -70,12 +80,12 @@ public class ProduceToKafka {
         if (startProducer) {
             logger.info("Initialising and starting ProduceToKafka");
 
-            if (useDynamicRoles) {
+            if (useDynamicRoles && useIam()) {
                 this.tempIamRole = iamManager.getTempIamRole();
                 iamManager.tryAssumeRole();
             }
 
-            this.props = iamProps();
+            this.props = useIam() ? iamProps() : saslProps();
             this.testTopics = kafkaManager.getTestTopics();
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> stopProducer()));
@@ -91,7 +101,9 @@ public class ProduceToKafka {
                         recreateConnectionSeconds);
                 this.badClient = Executors.newScheduledThreadPool(1);
                 badClient.scheduleAtFixedRate(() -> {
+                    var oldProducer = this.kafkaProducer;
                     this.kafkaProducer = new KafkaProducer<>(this.props);
+                    oldProducer.close(Duration.ofSeconds(5));
                 }, recreateConnectionSeconds, recreateConnectionSeconds,
                         TimeUnit.SECONDS);
             }
@@ -105,7 +117,9 @@ public class ProduceToKafka {
         running = true;
         while (running) {
             testTopics.forEach(this::produce);
-            Utils.sleepQuietly(sleepBetweenProduces);
+            if (sleepBetweenProduces > 0) {
+                Utils.sleepQuietly(sleepBetweenProduces);
+            }
         }
         closeProducer();
     }
@@ -135,7 +149,7 @@ public class ProduceToKafka {
     void produce(String topicName) {
         // Setting a key to fix sticky partition bug in older versions of kafka.
         var key = RandomStringUtils.randomAlphanumeric(8);
-        var payload = RandomStringUtils.randomAlphanumeric(32);
+        var payload = RandomStringUtils.randomAlphanumeric(500);
         logger.debug("Try produce to topic {} with payload {}", topicName, payload);
         var record = new ProducerRecord<String, String>(topicName, key, payload);
         kafkaProducer.send(record, (metadata, ex) -> {
@@ -149,9 +163,27 @@ public class ProduceToKafka {
         });
     }
 
+    private Properties saslProps() {
+        Properties props = new Properties();
+        props.put("bootstrap.servers", kafkaManager.getBrokers(false));
+        props.put("acks", "all");
+        props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+        props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+        props.put("security.protocol", "SASL_SSL");
+        props.put("sasl.mechanism", "SCRAM-SHA-512");
+        props.put("sasl.jaas.config", String.format(
+                "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"%s\" password=\"%s\";",
+                username, password));
+        return props;
+    }
+
+    private boolean useIam() {
+        return authMethod.equalsIgnoreCase(IAM);
+    }
+
     Properties iamProps() {
         Properties props = new Properties();
-        props.put("bootstrap.servers", kafkaManager.getBrokers());
+        props.put("bootstrap.servers", kafkaManager.getBrokers(useIam()));
         props.put("acks", "all");
         props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
         props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");

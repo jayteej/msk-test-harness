@@ -7,7 +7,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.slf4j.Logger;
@@ -24,6 +23,7 @@ import jakarta.annotation.PostConstruct;
 public class ConsumeFromKafka {
 
     private static final int STATS_RATE_SECONDS = 10;
+    private static final String IAM = "iam";
 
     @Autowired
     private KafkaManager kafkaManager;
@@ -33,6 +33,15 @@ public class ConsumeFromKafka {
 
     @Value("${use.dynamic.roles}")
     private boolean useDynamicRoles;
+
+    @Value("${auth.method}")
+    private String authMethod;
+
+    @Value("${sasl.scram.username:foo}")
+    private String username;
+
+    @Value("${sasl.scram.password:bar}")
+    private String password;
 
     @Value("${start.consumer}")
     private boolean startConsumer;
@@ -50,12 +59,12 @@ public class ConsumeFromKafka {
         if (startConsumer) {
             logger.info("Initialising and starting ConsumeFromKafka");
 
-            if (useDynamicRoles) {
+            if (useDynamicRoles && useIam()) {
                 this.tempIamRole = iamManager.getTempIamRole();
                 iamManager.tryAssumeRole();
             }
 
-            kafkaConsumer = new KafkaConsumer<>(iamProps());
+            kafkaConsumer = new KafkaConsumer<>(useIam() ? iamProps() : saslProps());
             CompletableFuture.runAsync(() -> startConsumer());
             startStats();
 
@@ -103,10 +112,32 @@ public class ConsumeFromKafka {
         kafkaConsumer.close(Duration.ofSeconds(5));
     }
 
+    private Properties saslProps() {
+        Properties props = new Properties();
+        props.put("bootstrap.servers", kafkaManager.getBrokers(false));
+        props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put("security.protocol", "SASL_SSL");
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "msk-test-harness");
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
+        props.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "1000");
+        props.put("security.protocol", "SASL_SSL");
+        props.put("sasl.mechanism", "SCRAM-SHA-512");
+        props.put("sasl.jaas.config", String.format(
+                "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"%s\" password=\"%s\";",
+                username, password));
+        return props;
+    }
+
+    private boolean useIam() {
+        return authMethod.equalsIgnoreCase(IAM);
+    }
+
     Properties iamProps() {
         Properties props = new Properties();
         var currentRoleUserId = iamManager.getCurrentRole();
-        props.put("bootstrap.servers", kafkaManager.getBrokers());
+        props.put("bootstrap.servers", kafkaManager.getBrokers(true));
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("security.protocol", "SASL_SSL");

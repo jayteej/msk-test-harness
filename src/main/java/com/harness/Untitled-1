@@ -1,2 +1,0 @@
-$KAFKABIN/kafka-configs.sh --bootstrap-server $KAFKASTR --entity-default --entity-type brokers --alter --add-config num.io.threads=12
-$KAFKABIN/kafka-configs.sh --bootstrap-server $KAFKASTR --entity-default --entity-type brokers --alter --add-config num.network.threads=8

@@ -27,7 +27,7 @@ import jakarta.annotation.PostConstruct;
 @Component
 public class KafkaManager {
 
-    private static final int NUM_PARTITIONS = 3;
+    private static final int NUM_PARTITIONS = 18;
     private static final short RF = 3;
 
     @Value("${test.topic.count}")
@@ -71,6 +71,7 @@ public class KafkaManager {
     }
 
     private void createTestTopics() {
+        if(cleanupOldTopics) return;
         if (useFixedTestTopics) {
             logger.info("Using fixed naming test topics.");
             this.testTopics = IntStream.rangeClosed(1, testTopicCount)
@@ -151,7 +152,7 @@ public class KafkaManager {
 
     Properties iamPropsAdminClient() {
         Properties props = new Properties();
-        props.put("bootstrap.servers", getBrokers());
+        props.put("bootstrap.servers", getBrokers(true));
         props.put("security.protocol", "SASL_SSL");
         props.put("sasl.mechanism", "AWS_MSK_IAM");
         props.put("sasl.jaas.config", "software.amazon.msk.auth.iam.IAMLoginModule required;");
@@ -159,14 +160,14 @@ public class KafkaManager {
         return props;
     }
 
-    public String getBrokers() {
+    public String getBrokers(boolean useIam) {
         var request = new GetBootstrapBrokersRequest();
         request.setClusterArn(clusterArn);
         request.setSdkRequestTimeout(10000);
         try {
             var response = mskClient.getBootstrapBrokers(request);
             logger.info("bootstrap servers={}", response.getBootstrapBrokerStringSaslIam());
-            return response.getBootstrapBrokerStringSaslIam();
+            return useIam ? response.getBootstrapBrokerStringSaslIam() : response.getBootstrapBrokerStringSaslScram();
         } catch (Exception ex) {
             logger.error("unable to get broker strings", ex);
             throw new RuntimeException(ex);
