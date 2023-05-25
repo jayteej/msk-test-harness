@@ -14,10 +14,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import javax.management.RuntimeErrorException;
-
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +52,12 @@ public class ProduceToKafka {
 
     @Value("${cluster.arn}")
     private String clusterArn;
+
+    @Value("${producer.linger.ms}")
+    private int producerLinger;
+
+    @Value("${producer.batch.kb}")
+    private int producerBatchKb;
 
     @Value("${producer.use.per.topic.connection}")
     private boolean connectionPerTopic;
@@ -199,6 +204,8 @@ public class ProduceToKafka {
         props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
         props.put("security.protocol", "SASL_SSL");
         props.put("sasl.mechanism", "SCRAM-SHA-512");
+        props.put(ProducerConfig.BATCH_SIZE_CONFIG, producerBatchKb*1024);
+        props.put(ProducerConfig.LINGER_MS_CONFIG, producerLinger);
         props.put("sasl.jaas.config", String.format(
                 "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"%s\" password=\"%s\";",
                 username, password));
@@ -217,6 +224,8 @@ public class ProduceToKafka {
         props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
         props.put("security.protocol", "SASL_SSL");
         props.put("sasl.mechanism", "AWS_MSK_IAM");
+        props.put(ProducerConfig.BATCH_SIZE_CONFIG, producerBatchKb*1024);
+        props.put(ProducerConfig.LINGER_MS_CONFIG, producerLinger);
         if (useDynamicRoles) {
             // Use the dynamically created role.
             props.put("sasl.jaas.config", String.format(
