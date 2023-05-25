@@ -1,7 +1,9 @@
 package com.harness;
 
 import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -9,6 +11,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import javax.management.RuntimeErrorException;
 
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -22,7 +28,9 @@ import org.springframework.stereotype.Controller;
 import com.amazonaws.services.identitymanagement.model.Role;
 
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Controller
 public class ProduceToKafka {
 
@@ -41,9 +49,13 @@ public class ProduceToKafka {
     private ScheduledExecutorService ses;
     private ScheduledExecutorService badClient;
     private List<String> testTopics;
+    private Map<String, KafkaProducer<String, String>> topicToProducer;
 
     @Value("${cluster.arn}")
     private String clusterArn;
+
+    @Value("${producer.use.per.topic.connection}")
+    private boolean connectionPerTopic;
 
     @Value("${start.producer}")
     private boolean startProducer;
@@ -93,8 +105,16 @@ public class ProduceToKafka {
 
             this.ses = Executors.newScheduledThreadPool(1);
             ses.scheduleAtFixedRate(this::stats, 0, STATS_RATE_SECONDS, TimeUnit.SECONDS);
-            this.kafkaProducer = new KafkaProducer<>(this.props);
-            if (recreateProducerConnection) {
+            if (connectionPerTopic) {
+                log.info("Using connection per topic, topics={}", testTopics.size());
+                this.topicToProducer = this.testTopics.stream()
+                        .collect(Collectors.toMap(Function.identity(),
+                                topic -> new KafkaProducer<String, String>(this.props)));
+            } else {
+                this.kafkaProducer = new KafkaProducer<>(this.props);
+            }
+
+            if (recreateProducerConnection && !connectionPerTopic) {
                 // This is for simulating a badly behaving client that creates a new client on
                 // each produce.
                 logger.warn("Badly behaving producer is enabled, new client created every {} seconds",
@@ -106,6 +126,10 @@ public class ProduceToKafka {
                     oldProducer.close(Duration.ofSeconds(5));
                 }, recreateConnectionSeconds, recreateConnectionSeconds,
                         TimeUnit.SECONDS);
+            } else if (recreateProducerConnection && connectionPerTopic) {
+                var msg = "Badly behaving connection and multiple connections per process not currently supported.";
+                logger.warn(msg);
+                throw new RuntimeException(msg);
             }
             CompletableFuture.runAsync(() -> startProducing());
         } else {
@@ -152,7 +176,11 @@ public class ProduceToKafka {
         var payload = RandomStringUtils.randomAlphanumeric(500);
         logger.debug("Try produce to topic {} with payload {}", topicName, payload);
         var record = new ProducerRecord<String, String>(topicName, key, payload);
-        kafkaProducer.send(record, (metadata, ex) -> {
+
+        // We support using 1 producer aka 1 connection, or 1 connection/producer per
+        // topic.
+        var producer = connectionPerTopic ? topicToProducer.get(topicName) : kafkaProducer;
+        producer.send(record, (metadata, ex) -> {
             if (ex != null) {
                 logger.error("Unable to produce to ".concat(topicName), ex);
             } else {
@@ -205,6 +233,9 @@ public class ProduceToKafka {
 
     void closeProducer() {
         Optional.ofNullable(this.kafkaProducer).ifPresent(kp -> kp.close(Duration.ofSeconds(5)));
+        Optional.ofNullable(topicToProducer)
+                .map(Map::values).stream().flatMap(Collection::stream)
+                .forEach(kp -> kp.close(Duration.ofSeconds(5)));
     }
 
 }
