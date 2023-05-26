@@ -1,5 +1,6 @@
 package com.harness;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -49,7 +50,6 @@ public class KafkaManager {
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final AWSKafka mskClient;
-    private AdminClient adminClient;
 
     public KafkaManager() {
         this.mskClient = AWSKafkaClientBuilder.standard()
@@ -62,7 +62,6 @@ public class KafkaManager {
     @PostConstruct
     private void init() {
         // @Value is only populated after constructor.
-        this.adminClient = AdminClient.create(iamPropsAdminClient());
         if (cleanupOldTopics) {
             cleanupOldTopics();
         }
@@ -71,18 +70,21 @@ public class KafkaManager {
     }
 
     private void createTestTopics() {
-        if(cleanupOldTopics) return;
+        if (cleanupOldTopics)
+            return;
+        var adminClient = AdminClient.create(iamPropsAdminClient());
         if (useFixedTestTopics) {
             logger.info("Using fixed naming test topics.");
             this.testTopics = IntStream.rangeClosed(1, testTopicCount)
-                    .mapToObj(i -> createTopic(false, testTopicPrefix.concat(String.valueOf(i))))
+                    .mapToObj(i -> createTopic(false, testTopicPrefix.concat(String.valueOf(i)), adminClient))
                     .collect(Collectors.toList());
         } else {
             logger.info("Generating random test topics with prefix {}", testTopicPrefix);
             this.testTopics = IntStream.rangeClosed(1, testTopicCount)
-                    .mapToObj(i -> createTopic(true, null))
+                    .mapToObj(i -> createTopic(true, null, adminClient))
                     .collect(Collectors.toList());
         }
+        adminClient.close(Duration.ofSeconds(5));
     }
 
     public List<String> getTestTopics() {
@@ -97,15 +99,18 @@ public class KafkaManager {
         }
         Optional.ofNullable(topicsToDelete).filter(tt -> tt.size() > 0).ifPresent(tt -> {
             logger.info("deleting {} topics", tt.size());
+            var adminClient = AdminClient.create(iamPropsAdminClient());
             try {
                 adminClient.deleteTopics(tt).all().get();
             } catch (Exception ex) {
                 logger.warn("Failed to delete topic ".concat(tt.toString()), ex);
+            } finally {
+                adminClient.close(Duration.ofSeconds(5));
             }
         });
     }
 
-    private String createTopic(boolean runtimeOnFailure, String overrideName) {
+    private String createTopic(boolean runtimeOnFailure, String overrideName, AdminClient adminClient) {
         var topicName = overrideName == null
                 ? testTopicPrefix.concat(String.format("%s-%s-%s", RandomStringUtils.randomAlphanumeric(5),
                         RandomStringUtils.randomAlphanumeric(5), RandomStringUtils.randomAlphanumeric(5)))
@@ -135,6 +140,7 @@ public class KafkaManager {
 
     public void cleanupOldTopics() {
         logger.info("Cleaning up old topics...");
+        var adminClient = AdminClient.create(iamPropsAdminClient());
         var response = adminClient.listTopics();
         try {
             var allTopics = response.listings().get();
@@ -146,6 +152,8 @@ public class KafkaManager {
             deleteTestTopics(testTopics);
         } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
+        } finally {
+            adminClient.close(Duration.ofSeconds(5));
         }
 
     }
