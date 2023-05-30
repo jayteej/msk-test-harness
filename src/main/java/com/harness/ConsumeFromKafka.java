@@ -2,6 +2,7 @@ package com.harness;
 
 import java.time.Duration;
 import java.util.Properties;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -45,6 +46,9 @@ public class ConsumeFromKafka {
 
     @Value("${start.consumer}")
     private boolean startConsumer;
+
+    @Value("${num.consumer.groups}")
+    private int numConsumerGroups;
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private Role tempIamRole;
@@ -113,12 +117,15 @@ public class ConsumeFromKafka {
     }
 
     private Properties saslProps() {
+        var consumerGroup = numConsumerGroups != -1
+                ? "msk-test-harness-group-" + (new Random().nextInt(numConsumerGroups) + 1)
+                : "msk-test-harness";
         Properties props = new Properties();
         props.put("bootstrap.servers", kafkaManager.getBrokers(false));
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("security.protocol", "SASL_SSL");
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "msk-test-harness");
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroup);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
         props.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "1000");
