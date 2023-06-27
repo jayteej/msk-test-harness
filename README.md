@@ -58,9 +58,21 @@ mvn spring-boot:run -Dspring-boot.run.jvmArguments="-Xms2G -Xmx2G"
 Docker Image Create and Upload
 ===================
 Assumes you have populated the env variable $AWS_ACCOUNT_ID
+
+For us-east-1:
+--------------
 ```
 mvn clean verify
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
-docker tag msk/harness:0.0.1-SNAPSHOT  $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/msk/harness:latest
+docker tag msk/harness:0.0.1-SNAPSHOT $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/msk/harness:latest
 docker push $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/msk/harness:latest
+```
+
+For us-west-2:
+--------------
+```
+mvn clean verify
+aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com
+docker tag msk/harness:0.0.1-SNAPSHOT $AWS_ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/msk/harness:latest
+docker push $AWS_ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/msk/harness:latest
 ```
