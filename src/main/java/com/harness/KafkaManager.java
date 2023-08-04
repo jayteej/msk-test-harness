@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -28,8 +29,10 @@ import jakarta.annotation.PostConstruct;
 @Component
 public class KafkaManager {
 
-    private static final int NUM_PARTITIONS = 18;
     private static final short RF = 3;
+
+    @Value("${num.partitions}")
+    private Integer numPartitions;
 
     @Value("${test.topic.count}")
     private Integer testTopicCount;
@@ -48,6 +51,7 @@ public class KafkaManager {
 
     private List<String> testTopics;
 
+    private final Random random = new Random();
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final AWSKafka mskClient;
 
@@ -87,6 +91,10 @@ public class KafkaManager {
         adminClient.close(Duration.ofSeconds(5));
     }
 
+    public List<String> getRandomTopic() {
+        return Collections.singletonList(this.testTopics.get(random.nextInt(this.testTopics.size())));
+    }
+
     public List<String> getTestTopics() {
         return this.testTopics;
     }
@@ -115,7 +123,7 @@ public class KafkaManager {
                 ? testTopicPrefix.concat(String.format("%s-%s-%s", RandomStringUtils.randomAlphanumeric(5),
                         RandomStringUtils.randomAlphanumeric(5), RandomStringUtils.randomAlphanumeric(5)))
                 : overrideName;
-        var request = new NewTopic(topicName, NUM_PARTITIONS, RF);
+        var request = new NewTopic(topicName, numPartitions, RF);
 
         try {
             adminClient.createTopics(Collections.singleton(request)).all().get();
