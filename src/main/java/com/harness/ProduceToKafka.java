@@ -187,7 +187,7 @@ public class ProduceToKafka {
         var sentPerSecond = sentInWindow > 0 ? sentInWindow / STATS_RATE_SECONDS : -1;
         var latencyMax = stats.getMax();
         var latencyMean = stats.getMean();
-        var latencyP99 = stats.getPercentile(0.99);
+        var latencyP99 = stats.getPercentile(99);
         logger.info("STATS: sentInWindow={}, sentPerSecond={} topics={}", sentInWindow, sentPerSecond, testTopics);
         logger.info("Produce Latency Stats Window={}s: max={}ms mean={}ms p99={}ms", STATS_RATE_SECONDS, latencyMax,
                 latencyMean, latencyP99);
