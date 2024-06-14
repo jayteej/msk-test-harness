@@ -192,13 +192,13 @@ public class ProduceToKafka {
         logger.info("Produce Latency Stats Window={}s: max={}ms mean={}ms p99={}ms", STATS_RATE_SECONDS, latencyMax,
                 latencyMean, latencyP99);
         lastSeenMessagesSent = messagesSentAndAcked;
-        if(latencyMax > 0) {
+        if (latencyMax > 0) {
             sendMetric("ProduceLatencyMaxMs", latencyMax);
         }
-        if(latencyMean > 0) {
+        if (latencyMean > 0) {
             sendMetric("ProduceLatencyMeanMs", latencyMean);
         }
-        if(latencyP99 > 0) {
+        if (latencyP99 > 0) {
             sendMetric("ProduceLatencyP99Ms", latencyP99);
         }
         stats.clear();
@@ -209,7 +209,8 @@ public class ProduceToKafka {
                 .withMetricName(metricName)
                 .withUnit("Milliseconds")
                 .withValue(value)
-                .withDimensions(new Dimension().withName("Topic").withValue("All"));
+                .withDimensions(new Dimension().withName("Topic").withValue("All").withName("Cluster")
+                        .withValue(kafkaManager.getClusterName()));
 
         PutMetricDataRequest request = new PutMetricDataRequest()
                 .withNamespace("KafkaTestHarness")
@@ -233,7 +234,7 @@ public class ProduceToKafka {
         producer.send(record, (metadata, ex) -> {
             if (ex != null) {
                 logger.error("Unable to produce to ".concat(topicName), ex);
-                if(ex instanceof AuthorizationException) {
+                if (ex instanceof AuthorizationException) {
                     logger.warn("Stopping produce due to authorisation exception: ".concat(topicName), ex);
                     stopProducer();
                 }

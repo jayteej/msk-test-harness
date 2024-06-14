@@ -199,7 +199,8 @@ public class ConsumeFromKafka {
                 .withMetricName(metricName)
                 .withUnit("Milliseconds")
                 .withValue(value)
-                .withDimensions(new Dimension().withName("ConsumerGroup").withValue(consumerGroup));
+                .withDimensions(new Dimension().withName("ConsumerGroup").withValue(consumerGroup).withName("Cluster")
+                        .withValue(kafkaManager.getClusterName()));
 
         PutMetricDataRequest request = new PutMetricDataRequest()
                 .withNamespace("KafkaTestHarness")

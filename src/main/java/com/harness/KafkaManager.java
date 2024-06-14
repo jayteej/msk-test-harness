@@ -7,12 +7,14 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,6 +51,12 @@ public class KafkaManager {
     @Value("${cluster.arn}")
     private String clusterArn;
 
+    private String clusterName;
+
+    public String getClusterName() {
+        return clusterName;
+    }
+
     private List<String> testTopics;
 
     private final Random random = new Random();
@@ -60,11 +68,11 @@ public class KafkaManager {
                 .withRegion(Regions.US_EAST_1)
                 .withCredentials(DefaultAWSCredentialsProviderChain.getInstance())
                 .build();
-
     }
 
     @PostConstruct
     private void init() {
+        this.clusterName = this.clusterArn.split("/")[1];
         // @Value is only populated after constructor.
         if (cleanupOldTopics) {
             cleanupOldTopics();
@@ -78,7 +86,7 @@ public class KafkaManager {
             return;
         var adminClient = AdminClient.create(iamPropsAdminClient());
         if (useFixedTestTopics) {
-            logger.info("Using fixed naming test topics.");
+            logger.info("Using fixed naming test topics on cluster {}", clusterName);
             this.testTopics = IntStream.rangeClosed(1, testTopicCount)
                     .mapToObj(i -> createTopic(false, testTopicPrefix.concat(String.valueOf(i)), adminClient))
                     .collect(Collectors.toList());
@@ -125,13 +133,23 @@ public class KafkaManager {
                 : overrideName;
         var request = new NewTopic(topicName, numPartitions, RF);
 
+        int retryCount = 0, maxRetries = 50;
+
         try {
             adminClient.createTopics(Collections.singleton(request)).all().get();
-            if (!adminClient.listTopics().names().get().contains(topicName)) {
-                var message = String.format("Topic named %s was not present after creation.", topicName);
-                throw new RuntimeException(message);
-            } else {
-                logger.info("Created topic {}", topicName);
+            while (retryCount < maxRetries) {
+                if (!adminClient.listTopics().names().get().contains(topicName)) {
+                    if (++retryCount >= maxRetries) {
+                        var message = String.format("Topic named %s was not present after creation.", topicName);
+                        throw new RuntimeException(message);
+                    } else {
+                        logger.info("Retry {}", retryCount);
+                        TimeUnit.MILLISECONDS.sleep(100);
+                    }
+                } else {
+                    logger.info("Created topic {}", topicName);
+                    break;
+                }
             }
         } catch (ExecutionException | InterruptedException ex) {
             if (runtimeOnFailure) {
@@ -164,6 +182,18 @@ public class KafkaManager {
             adminClient.close(Duration.ofSeconds(5));
         }
 
+    }
+
+    private Properties saslProps() {
+        Properties props = new Properties();
+        props.put("bootstrap.servers", getBrokers(false));
+        props.put("security.protocol", "SASL_SSL");
+        props.put("sasl.mechanism", "SCRAM-SHA-512");
+        props.put("sasl.jaas.config", String.format(
+                "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"%s\" password=\"%s\";",
+                "alice", "alice-secret"));
+        logger.info(props.toString());
+        return props;
     }
 
     Properties iamPropsAdminClient() {
