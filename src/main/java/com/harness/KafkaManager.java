@@ -2,7 +2,9 @@ package com.harness;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Random;
@@ -131,7 +133,11 @@ public class KafkaManager {
                 ? testTopicPrefix.concat(String.format("%s-%s-%s", RandomStringUtils.randomAlphanumeric(5),
                         RandomStringUtils.randomAlphanumeric(5), RandomStringUtils.randomAlphanumeric(5)))
                 : overrideName;
-        var request = new NewTopic(topicName, numPartitions, RF);
+        Map<String, String> topicConfig = new HashMap<>();
+        topicConfig.put("retention.ms", String.valueOf(6 * 60 * 60 * 1000)); // 6 hours millis
+        topicConfig.put("retention.bytes", String.valueOf(50L * 1024 * 1024 * 1024)); // 50 GB in bytes
+
+        var request = new NewTopic(topicName, numPartitions, RF).configs(topicConfig);
 
         int retryCount = 0, maxRetries = 50;
 

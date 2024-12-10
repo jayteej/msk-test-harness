@@ -65,6 +65,12 @@ public class ConsumeFromKafka {
     @Value("${num.consumer.groups}")
     private int numConsumerGroups;
 
+    @Value("${fetch.min.bytes}")
+    private int fetchMinBytes;
+
+    @Value("${fetch.max.wait.ms}")
+    private int fetchMaxWaitMs;
+
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private Role tempIamRole;
     private KafkaConsumer<String, String> kafkaConsumer;
@@ -219,6 +225,8 @@ public class ConsumeFromKafka {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
         props.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "1000");
+        props.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, fetchMinBytes);
+        props.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, fetchMaxWaitMs);
         props.put("security.protocol", "SASL_SSL");
         props.put("sasl.mechanism", "SCRAM-SHA-512");
         props.put("sasl.jaas.config", String.format(
@@ -243,6 +251,8 @@ public class ConsumeFromKafka {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
         props.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "1000");
+        props.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, fetchMinBytes);
+        props.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, fetchMaxWaitMs);
         props.put("sasl.mechanism", "AWS_MSK_IAM");
         if (useDynamicRoles) {
             // Use the dynamically created role.
