@@ -13,7 +13,9 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.KafkaShareConsumer;
 import org.apache.kafka.common.errors.GroupAuthorizationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +37,8 @@ public class ConsumeFromKafka {
 
     private static final int STATS_RATE_SECONDS = 10;
     private static final String IAM = "iam";
+    private static final String CLASSIC = "classic";
+    private static final String SHARE = "share";
     private DescriptiveStatistics stats = new DescriptiveStatistics();
     private DescriptiveStatistics messageStats = new DescriptiveStatistics();
 
@@ -71,9 +75,13 @@ public class ConsumeFromKafka {
     @Value("${fetch.max.wait.ms}")
     private int fetchMaxWaitMs;
 
+    @Value("${consumer.type}")
+    private String consumerType;
+
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private Role tempIamRole;
     private KafkaConsumer<String, String> kafkaConsumer;
+    private KafkaShareConsumer<String, String> kafkaShareConsumer;
     private boolean running;
     private long messagesConsumed = 0L;
     private long lastMessagesConsumed = 0L;
@@ -102,7 +110,12 @@ public class ConsumeFromKafka {
                         : "msk-test-harness";
             }
 
-            kafkaConsumer = new KafkaConsumer<>(useIam() ? iamProps() : saslProps());
+            if (useShare()) {
+                kafkaShareConsumer = new KafkaShareConsumer<>(useIam() ? iamProps() : saslProps());
+            } else {
+                kafkaConsumer = new KafkaConsumer<>(useIam() ? iamProps() : saslProps());
+            }
+
             CompletableFuture.runAsync(() -> startConsumer());
             this.cwClient = AmazonCloudWatchClientBuilder.defaultClient();
             startStats();
@@ -170,11 +183,20 @@ public class ConsumeFromKafka {
     private void startConsumer() {
         logger.info("Starting consumer for {}", kafkaManager.getTestTopics().toString());
         running = true;
-        kafkaConsumer.subscribe(enableScatter ? kafkaManager.getRandomTopic() : kafkaManager.getTestTopics());
+        if (useShare()) {
+            kafkaShareConsumer.subscribe(enableScatter ? kafkaManager.getRandomTopic() : kafkaManager.getTestTopics());
+        } else {
+            kafkaConsumer.subscribe(enableScatter ? kafkaManager.getRandomTopic() : kafkaManager.getTestTopics());
+        }
         while (running) {
             try {
                 long startTime = System.currentTimeMillis();
-                var records = kafkaConsumer.poll(Duration.ofMillis(100));
+                ConsumerRecords<String, String> records;
+                if (useShare()) {
+                    records = kafkaShareConsumer.poll(Duration.ofMillis(100));
+                } else {
+                    records = kafkaConsumer.poll(Duration.ofMillis(100));
+                }
                 messagesConsumed += records.count();
                 for (var record : records) {
                     Optional.ofNullable(record).map(r -> r.value())
@@ -196,7 +218,11 @@ public class ConsumeFromKafka {
                 logger.error("Error during consume.", ex);
             }
         }
-        kafkaConsumer.close(Duration.ofSeconds(5));
+        if (useShare()) {
+            kafkaShareConsumer.close(Duration.ofSeconds(5));
+        } else {
+            kafkaConsumer.close(Duration.ofSeconds(5));
+        }
         cwClient.shutdown();
     }
 
@@ -221,6 +247,7 @@ public class ConsumeFromKafka {
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("security.protocol", "SASL_SSL");
+        props.put(ConsumerConfig.GROUP_PROTOCOL_CONFIG, useClassic() ? "classic" : "consumer");
         props.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroup);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
@@ -246,6 +273,7 @@ public class ConsumeFromKafka {
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("security.protocol", "SASL_SSL");
+        props.put(ConsumerConfig.GROUP_PROTOCOL_CONFIG, useClassic() ? "classic" : "consumer");
         props.put(ConsumerConfig.GROUP_ID_CONFIG,
                 useDynamicRoles ? tempIamRole.getRoleName() : "msk-test-harness");
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
@@ -266,6 +294,14 @@ public class ConsumeFromKafka {
         }
         props.put("sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
         return props;
+    }
+
+    private boolean useShare() {
+        return consumerType.equalsIgnoreCase(SHARE);
+    }
+
+    private boolean useClassic() {
+        return consumerType.equalsIgnoreCase(CLASSIC);
     }
 
 }
